@@ -2449,6 +2449,11 @@ def _(operator):
     return TaggedLinearOperator(conj(operator.operator), operator.tags)
 
 
+@conj.register(KroneckerLinearOperator)
+def _(operator):
+    return KroneckerLinearOperator(conj(operator.operator1), conj(operator.operator2))
+
+
 @conj.register(TangentLinearOperator)
 def _(operator):
     c = lambda operator: conj(operator)
