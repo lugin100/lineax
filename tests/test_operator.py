@@ -157,7 +157,6 @@ def _assert_except_diag(cond_fun, operators, flip_cond):
 def test_linearise(dtype, getkey):
     matrix = jr.normal(getkey(), (3, 3), dtype=dtype)
     operators = list(_setup(getkey, matrix))
-    vec = jr.normal(getkey(), (3,), dtype=dtype)
     for operator in operators:
         # Skip jacrev operators with complex dtype (jacrev doesn't support complex)
         if (
@@ -168,6 +167,10 @@ def test_linearise(dtype, getkey):
             continue
         linearised = lx.linearise(operator)
         # Actually evaluate the linearised operator to ensure it works
+        if isinstance(operator, lx.KroneckerLinearOperator):
+            vec = jr.normal(getkey(), (9,), dtype=dtype)
+        else:
+            vec = jr.normal(getkey(), (3,), dtype=dtype)
         result = linearised.mv(vec)
         expected = operator.mv(vec)
         assert tree_allclose(result, expected)
