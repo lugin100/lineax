@@ -963,7 +963,16 @@ class KroneckerLinearOperator(AbstractLinearOperator):
         return jnp.kron(self.operator1.as_matrix(), self.operator2.as_matrix())
 
     def mv(self, vector):
-        raise NotImplementedError
+        # C-order vec trick: (A kron B)vector = vec_C(A @ mat(vector) @ B^T)
+        # Note: row @ B^T = B @ row (as 1D vectors), so we use B.mv on rows.
+        n1 = self.operator1.in_structure().shape[0]
+        n2 = self.operator1.in_structure().shape[0]
+        X = vector.reshape(n1, n2)
+        # Compute A @ X by applying A.mv to each column of X
+        AX = jax.vmap(self.operator1.mv, in_axes=1, out_axes=1)(X)
+        # Compute (A @ X) @ B^T by applying B.mv to each row of AX
+        AXBt = jax.vmap(self.operator2.mv, in_axes=0, out_axes=0)(AX)
+        return AXBt.ravel()
 
     def transpose(self):
         raise NotImplementedError
