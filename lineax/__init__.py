@@ -34,6 +34,7 @@ from ._operator import (
     is_tridiagonal as is_tridiagonal,
     is_upper_triangular as is_upper_triangular,
     JacobianLinearOperator as JacobianLinearOperator,
+    KroneckerLinearOperator as KroneckerLinearOperator,
     linearise as linearise,
     materialise as materialise,
     MatrixLinearOperator as MatrixLinearOperator,

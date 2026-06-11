@@ -942,6 +942,39 @@ class TaggedLinearOperator(AbstractLinearOperator):
         return self.operator.out_structure()
 
 
+class KroneckerLinearOperator(AbstractLinearOperator):
+    """Linear operator defined as the Kronecker product of two linear operators."""
+
+    operator1: AbstractLinearOperator
+    operator2: AbstractLinearOperator
+
+    def __init__(
+        self, operator1: AbstractLinearOperator, operator2: AbstractLinearOperator
+    ):
+        """**Arguments:**
+
+        - `operator1`: Any linear operator, left factor of the Kronecker product.
+        - `operator1`: Any linear operator, right factor of the Kronecker product.
+        """
+        self.operator1 = operator1
+        self.operator2 = operator2
+
+    def as_matrix(self):
+        return jnp.kron(self.operator1.as_matrix(), self.operator2.as_matrix())
+
+    def mv(self, vector):
+        raise NotImplementedError
+
+    def transpose(self):
+        raise NotImplementedError
+
+    def in_structure(self):
+        raise NotImplementedError
+
+    def out_structure(self):
+        raise NotImplementedError
+
+
 #
 # All operators below here are private to lineax.
 #

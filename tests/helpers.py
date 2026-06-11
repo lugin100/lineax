@@ -322,6 +322,13 @@ def make_neg_operator(getkey, matrix, tags):
     )
 
 
+@_operators_append
+def make_Kronecker_operator(getkey, matrix, tags):
+    op1 = make_matrix_operator(getkey, matrix, tags)
+    op2 = make_matrix_operator(getkey, 0.5 * matrix, tags)
+    return lx.KroneckerLinearOperator(op1, op2)
+
+
 # tags that should be preserved under add and (POSITIVE) sclar mul/div
 PRESERVED_TAGS = {
     lx.diagonal_tag,
