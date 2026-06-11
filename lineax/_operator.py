@@ -969,10 +969,16 @@ class KroneckerLinearOperator(AbstractLinearOperator):
         raise NotImplementedError
 
     def in_structure(self):
-        raise NotImplementedError
+        n1 = self.operator1.in_structure().shape[0]
+        n2 = self.operator2.in_structure().shape[0]
+        dtype = self.operator1.in_structure().dtype
+        return jax.ShapeDtypeStruct((n1 * n2,), dtype)
 
     def out_structure(self):
-        raise NotImplementedError
+        n1 = self.operator1.out_structure().shape[0]
+        n2 = self.operator2.out_structure().shape[0]
+        dtype = self.operator1.out_structure().dtype
+        return jax.ShapeDtypeStruct((n1 * n2,), dtype)
 
 
 #
