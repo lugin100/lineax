@@ -24,6 +24,7 @@ import pytest
 from .helpers import (
     make_identity_operator,
     make_jacrev_operator,
+    make_Kronecker_operator,
     make_operators,
     make_tridiagonal_operator,
     make_trivial_diagonal_operator,
@@ -34,30 +35,35 @@ from .helpers import (
 @pytest.mark.parametrize("make_operator", make_operators)
 @pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
 def test_ops(make_operator, getkey, dtype):
+    n = 3
     if (
         make_operator is make_trivial_diagonal_operator
         or make_operator is make_identity_operator
     ):
-        matrix = jnp.eye(3, dtype=dtype)
+        matrix = jnp.eye(n, dtype=dtype)
         tags = lx.diagonal_tag
     elif make_operator is make_tridiagonal_operator:
-        matrix = jnp.eye(3, dtype=dtype)
+        matrix = jnp.eye(n, dtype=dtype)
         tags = lx.tridiagonal_tag
+    elif make_operator is make_Kronecker_operator:
+        matrix = jr.normal(getkey(), (n, n), dtype=dtype)
+        tags = ()
+        n = n**2
     else:
-        matrix = jr.normal(getkey(), (3, 3), dtype=dtype)
+        matrix = jr.normal(getkey(), (n, n), dtype=dtype)
         tags = ()
     if make_operator is make_jacrev_operator and dtype is jnp.complex128:
         # JacobianLinearOperator does not support complex dtypes when jac="bwd"
         return
     matrix1 = make_operator(getkey, matrix, tags)
-    matrix2 = lx.MatrixLinearOperator(jr.normal(getkey(), (3, 3), dtype=dtype))
+    matrix2 = lx.MatrixLinearOperator(jr.normal(getkey(), (n, n), dtype=dtype))
     scalar = jr.normal(getkey(), (), dtype=dtype)
     add = matrix1 + matrix2
     composed = matrix1 @ matrix2
     mul = matrix1 * scalar
     rmul = cast(lx.AbstractLinearOperator, scalar * matrix1)
     div = matrix1 / scalar
-    vec = jr.normal(getkey(), (3,), dtype=dtype)
+    vec = jr.normal(getkey(), (n,), dtype=dtype)
 
     assert tree_allclose(matrix1.mv(vec) + matrix2.mv(vec), add.mv(vec))
     assert tree_allclose(matrix1.mv(matrix2.mv(vec)), composed.mv(vec))
@@ -96,6 +102,11 @@ def test_structures_vector(make_operator, getkey):
         matrix = jnp.eye(4)
         tags = lx.tridiagonal_tag
         in_size = out_size = 4
+    elif make_operator is make_Kronecker_operator:
+        matrix = jr.normal(getkey(), (3, 5))
+        tags = ()
+        in_size = 5**2
+        out_size = 3**2
     else:
         matrix = jr.normal(getkey(), (3, 5))
         tags = ()
@@ -183,12 +194,21 @@ def test_diagonal(dtype, getkey):
     # test we properly extract diagonal from a dense matrix when not tagged
     operators = _setup(getkey, matrix)
     for operator in operators:
-        assert jnp.allclose(lx.diagonal(operator), matrix_diag)
+        if isinstance(operator, lx.KroneckerLinearOperator):
+            assert jnp.allclose(
+                lx.diagonal(operator), jnp.kron(matrix_diag, 0.5 * matrix_diag)
+            )
+        else:
+            assert jnp.allclose(lx.diagonal(operator), matrix_diag)
     # test we properly extract diagonal from diagonal matrix when tagged
     operators = _setup(getkey, jnp.diag(matrix_diag), lx.diagonal_tag)
     for operator in operators:
         if isinstance(operator, lx.IdentityLinearOperator):
             assert jnp.allclose(lx.diagonal(operator), jnp.ones(3))
+        elif isinstance(operator, lx.KroneckerLinearOperator):
+            assert jnp.allclose(
+                lx.diagonal(operator), jnp.kron(matrix_diag, 0.5 * matrix_diag)
+            )
         else:
             assert jnp.allclose(lx.diagonal(operator), matrix_diag)
 
@@ -211,6 +231,18 @@ def test_tridiagonal(dtype, getkey):
             assert jnp.allclose(diag, jnp.ones(5))
             assert jnp.allclose(lower_diag, jnp.zeros(4))
             assert jnp.allclose(upper_diag, jnp.zeros(4))
+        elif isinstance(operator, lx.KroneckerLinearOperator):
+            # For the Kronecker operator, not just the tridiagonal elements of
+            # 'matrix' influence the operators tridiagonal entries.
+            operator = make_Kronecker_operator(getkey, matrix, ())
+            diag, lower_diag, upper_diag = lx.tridiagonal(operator)
+            kron_matrix = jnp.kron(matrix, 0.5 * matrix)
+            kron_matrix_diag = jnp.diag(kron_matrix)
+            kron_matrix_lower_diag = jnp.diag(kron_matrix, k=-1)
+            kron_matrix_upper_diag = jnp.diag(kron_matrix, k=1)
+            assert jnp.allclose(diag, kron_matrix_diag)
+            assert jnp.allclose(lower_diag, kron_matrix_lower_diag)
+            assert jnp.allclose(upper_diag, kron_matrix_upper_diag)
         else:
             assert jnp.allclose(diag, matrix_diag)
             assert jnp.allclose(lower_diag, matrix_lower_diag)
@@ -360,10 +392,12 @@ def test_is_tridiagonal(dtype, getkey):
 def test_tangent_as_matrix(dtype, getkey):
     def _list_setup(matrix):
         # Exclude jacrev operator: jac="bwd" uses custom_vjp which doesn't support JVP
+        # Handle KroneckerLinearOperator separately below
         return [
             op
             for op in _setup(getkey, matrix)
             if not (isinstance(op, lx.JacobianLinearOperator) and op.jac == "bwd")
+            and not isinstance(op, lx.KroneckerLinearOperator)
         ]
 
     matrix = jr.normal(getkey(), (3, 3), dtype=dtype)
@@ -377,6 +411,14 @@ def test_tangent_as_matrix(dtype, getkey):
         else:
             assert jnp.allclose(operator.as_matrix(), matrix)
             assert jnp.allclose(t_operator.as_matrix(), t_matrix)
+
+    kron_matrix = jnp.kron(matrix, 0.5 * matrix)
+    kron_t_matrix = jnp.kron(t_matrix, 0.5 * matrix) + jnp.kron(matrix, 0.5 * t_matrix)
+    kron_operator = lambda matrix: make_Kronecker_operator(getkey, matrix, ())
+    kron_operator, kron_t_operator = jax.jvp(kron_operator, [matrix], [t_matrix])
+    kron_t_operator = lx.TangentLinearOperator(kron_operator, kron_t_operator)
+    assert jnp.allclose(kron_operator.as_matrix(), kron_matrix)
+    assert jnp.allclose(kron_t_operator.as_matrix(), kron_t_matrix)
 
 
 @pytest.mark.parametrize("dtype", (jnp.float64, jnp.complex128))
