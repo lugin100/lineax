@@ -1788,6 +1788,12 @@ def _(operator):
     return True
 
 
+@is_tridiagonal.register(KroneckerLinearOperator)
+def _(operator):
+    # Kronecker products are almost never tridiagonal
+    return False
+
+
 # has_unit_diagonal
 
 
