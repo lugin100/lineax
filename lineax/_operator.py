@@ -1266,6 +1266,7 @@ def linearise(operator: AbstractLinearOperator) -> AbstractLinearOperator:
 @linearise.register(IdentityLinearOperator)
 @linearise.register(DiagonalLinearOperator)
 @linearise.register(TridiagonalLinearOperator)
+@linearise.register(KroneckerLinearOperator)
 def _(operator):
     return operator
 
@@ -1379,6 +1380,7 @@ def _(operator):
 @materialise.register(IdentityLinearOperator)
 @materialise.register(DiagonalLinearOperator)
 @materialise.register(TridiagonalLinearOperator)
+@materialise.register(KroneckerLinearOperator)
 def _(operator):
     return operator
 
@@ -1503,6 +1505,11 @@ def _(operator):
     return operator.diagonal
 
 
+@diagonal.register(KroneckerLinearOperator)
+def _(operator):
+    return jnp.kron(diagonal(operator.operator1), diagonal(operator.operator2))
+
+
 # tridiagonal
 
 
@@ -1612,6 +1619,13 @@ def _(operator):
 @tridiagonal.register(TridiagonalLinearOperator)
 def _(operator):
     return operator.diagonal, operator.lower_diagonal, operator.upper_diagonal
+
+
+@tridiagonal.register(KroneckerLinearOperator)
+def _(operator):
+    # TODO: Implement more efficient version
+    # using https://wikimedia.org/api/rest_v1/media/math/render/svg/202c50bbb97f022462ce2c080dcc2facee18ed5c
+    return tridiagonal(MatrixLinearOperator(operator.as_matrix()))
 
 
 # is_symmetric
@@ -2132,6 +2146,22 @@ for check in (
     @check.register(TangentLinearOperator)
     def _(operator, check=check):
         return check(operator.primal)
+
+
+# Kronecker product preserves these structural properties
+for check in (
+    is_symmetric,
+    is_diagonal,
+    is_lower_triangular,
+    is_upper_triangular,
+    is_positive_semidefinite,
+    is_negative_semidefinite,
+    has_unit_diagonal,
+):
+
+    @check.register(KroneckerLinearOperator)
+    def _(operator, check=check):
+        return check(operator.operator1) and check(operator.operator2)
 
 
 # Scaling/negating preserves these structural properties
