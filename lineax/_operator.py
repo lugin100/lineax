@@ -975,7 +975,9 @@ class KroneckerLinearOperator(AbstractLinearOperator):
         return AXBt.ravel()
 
     def transpose(self):
-        raise NotImplementedError
+        return KroneckerLinearOperator(
+            self.operator1.transpose(), self.operator2.transpose()
+        )
 
     def in_structure(self):
         n1 = self.operator1.in_structure().shape[0]
