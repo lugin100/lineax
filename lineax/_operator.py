@@ -991,6 +991,18 @@ class KroneckerLinearOperator(AbstractLinearOperator):
         dtype = self.operator1.out_structure().dtype
         return jax.ShapeDtypeStruct((n1 * n2,), dtype)
 
+    def __matmul__(self, other):
+        if isinstance(other, KroneckerLinearOperator):
+            # mixed product formula
+            return KroneckerLinearOperator(
+                self.operator1 @ other.operator1, self.operator2 @ other.operator2
+            )
+        if isinstance(other, ArrayLike):
+            return jax.vmap(self.mv, in_axes=1, out_axes=1)(other)
+        if not isinstance(other, AbstractLinearOperator):
+            raise ValueError("Can only compose AbstractLinearOperators together.")
+        return ComposedLinearOperator(self, other)
+
 
 #
 # All operators below here are private to lineax.
