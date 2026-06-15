@@ -81,7 +81,10 @@ class Kronecker(AbstractLinearSolver[_KroneckerState]):
         return x, RESULTS.successful, {}
 
     def transpose(self, state: _KroneckerState, options: dict[str, Any]):
-        raise NotImplementedError
+        m, n, solver1, solver2, solver1_state, solver2_state = state
+        solver1_state, _ = solver1.transpose(solver1_state, {})
+        solver2_state, _ = solver2.transpose(solver2_state, {})
+        return (m, n, solver1, solver2, solver1_state, solver2_state), options
 
     def conj(self, state: _KroneckerState, options: dict[str, Any]):
         raise NotImplementedError
