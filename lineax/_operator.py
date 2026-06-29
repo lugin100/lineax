@@ -823,6 +823,66 @@ class IdentityLinearOperator(AbstractLinearOperator):
         return frozenset()
 
 
+class ZeroLinearOperator(AbstractLinearOperator):
+    """Represents the transformation `X -> 0`, where each `x in X` is some
+    PyTree of floating-point JAX arrays.
+    """
+
+    input_structure: _FlatPyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
+    output_structure: _FlatPyTree[jax.ShapeDtypeStruct] = eqx.field(static=True)
+
+    def __init__(
+        self,
+        input_structure: PyTree[jax.ShapeDtypeStruct],
+        output_structure: PyTree[jax.ShapeDtypeStruct] = sentinel,
+    ):
+        """**Arguments:**
+
+        - `input_structure`: A PyTree of `jax.ShapeDtypeStruct`s specifying the
+            structure of the the input space. (When later calling `self.mv(x)`
+            then this should match the structure of `x`, i.e.
+            `jax.eval_shape(lambda: x)`.)
+        - `output_structure`: A PyTree of `jax.ShapeDtypeStruct`s specifying the
+            structure of the the output space. If not passed then this defaults to the
+            same as `input_structure`.
+        """
+        if output_structure is sentinel:
+            output_structure = input_structure
+        input_structure = _inexact_structure(input_structure)
+        output_structure = _inexact_structure(output_structure)
+        self.input_structure = jtu.tree_flatten(input_structure)
+        self.output_structure = jtu.tree_flatten(output_structure)
+
+    def mv(self, vector):
+        if not eqx.tree_equal(
+            strip_weak_dtype(jax.eval_shape(lambda: vector)),
+            strip_weak_dtype(self.in_structure()),
+        ):
+            raise ValueError("Vector and operator structures do not match")
+        return jax.tree.map(jnp.zeros, self.output_structure)
+
+    def as_matrix(self):
+        leaves = jtu.tree_leaves(self.in_structure())
+        with jax.numpy_dtype_promotion("standard"):
+            dtype = (
+                default_floating_dtype()
+                if len(leaves) == 0
+                else jnp.result_type(*leaves)
+            )
+        return jnp.zeros((self.out_size(), self.in_size()), dtype=dtype)
+
+    def transpose(self):
+        return ZeroLinearOperator(self.out_structure(), self.in_structure())
+
+    def in_structure(self):
+        leaves, treedef = self.input_structure
+        return jtu.tree_unflatten(treedef, leaves)
+
+    def out_structure(self):
+        leaves, treedef = self.output_structure
+        return jtu.tree_unflatten(treedef, leaves)
+
+
 class TridiagonalLinearOperator(AbstractLinearOperator):
     """As [`lineax.MatrixLinearOperator`][], but for specifically a tridiagonal
     matrix.
