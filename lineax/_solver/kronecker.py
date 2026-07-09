@@ -17,7 +17,11 @@ from typing import Any, TypeAlias
 import jax
 from jaxtyping import Array, PyTree
 
-from .._operator import AbstractLinearOperator, KroneckerLinearOperator
+from .._operator import (
+    AbstractLinearOperator,
+    KroneckerLinearOperator,
+    MatrixLinearOperator,
+)
 from .._solution import RESULTS
 from .._solve import _SolverState, AbstractLinearSolver, AutoLinearSolver
 
@@ -79,6 +83,29 @@ class Kronecker(AbstractLinearSolver[_KroneckerState]):
         X = XT.mT
         x = X.reshape((-1,), order="F")
         return x, RESULTS.successful, {}
+
+    def compute_for_Kronecker(
+        self,
+        state: _KroneckerState,
+        rhs: KroneckerLinearOperator,
+        options: dict[str, Any],
+    ) -> tuple[KroneckerLinearOperator, RESULTS, dict[str, Any]]:
+        m, n, solver1, solver2, solver1_state, solver2_state = state
+        del state
+        A = jax.vmap(
+            lambda a: solver1.compute(solver1_state, a, options)[0],
+            in_axes=1,
+            out_axes=1,
+        )(rhs.operator1.as_matrix())
+        B = jax.vmap(
+            lambda b: solver2.compute(solver2_state, b, options)[0],
+            in_axes=1,
+            out_axes=1,
+        )(rhs.operator2.as_matrix())
+        result = KroneckerLinearOperator(
+            MatrixLinearOperator(A), MatrixLinearOperator(B)
+        )
+        return result, RESULTS.successful, {}
 
     def transpose(self, state: _KroneckerState, options: dict[str, Any]):
         m, n, solver1, solver2, solver1_state, solver2_state = state
