@@ -1063,6 +1063,13 @@ class KroneckerLinearOperator(AbstractLinearOperator):
             raise ValueError("Can only compose AbstractLinearOperators together.")
         return ComposedLinearOperator(self, other)
 
+    def squared_sum(self):
+        squared_sum_1 = jnp.sum(self.operator1.as_matrix() ** 2, axis=0)
+        squared_sum_2 = jnp.sum(self.operator2.as_matrix() ** 2, axis=0)
+        return KroneckerLinearOperator(
+            DiagonalLinearOperator(squared_sum_1), DiagonalLinearOperator(squared_sum_2)
+        )
+
 
 #
 # All operators below here are private to lineax.
